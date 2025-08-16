@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - "**.md"   # Trigger only when .md files change
+    workflow_dispatch:
 
 jobs:
   sync-md:
