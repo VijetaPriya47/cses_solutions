@@ -1,0 +1,67 @@
+name: Sync Markdown to Repo B
+
+on:
+  push:
+    paths:
+      - "**.md"   # Trigger only when .md files change
+
+jobs:
+  sync-md:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout cses_solutions
+        uses: actions/checkout@v4
+
+      - name: Get changed and deleted .md files
+        id: changed-files
+        uses: tj-actions/changed-files@v45
+        with:
+          files: |
+            **.md
+
+      - name: Clone csesweb
+        run: |
+          git clone https://github.com/VijetaPriya47/csesweb.git
+          cd RepoB
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Sync changed Markdown files into docs/
+        if: steps.changed-files.outputs.any_changed == 'true'
+        run: |
+          for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
+            if [ -f "$file" ]; then
+              mkdir -p csesweb/docs/$(dirname "$file")
+              cp "$file" csesweb/docs/"$file"
+            fi
+          done
+
+      - name: Remove deleted Markdown files from docs/
+        if: steps.changed-files.outputs.deleted_files != ''
+        run: |
+          for file in ${{ steps.changed-files.outputs.deleted_files }}; do
+            rm -f csesweb/docs/"$file"
+          done
+
+      - name: Commit and Push Changes to csesweb
+        if: steps.changed-files.outputs.any_changed == 'true' || steps.changed-files.outputs.deleted_files != ''
+        run: |
+          cd csesweb
+          git checkout -b sync-md-branch || git checkout sync-md-branch
+          git add docs/
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Sync markdown files from csesweb (add/update/delete)"
+            git push https://x-access-token:${{ secrets.REPO_B_TOKEN }}@github.com/VijetaPriya47/csesweb.git sync-md-branch --force
+          fi
+
+      - name: Create Pull Request in Repo B
+        if: steps.changed-files.outputs.any_changed == 'true' || steps.changed-files.outputs.deleted_files != ''
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.REPO_B_TOKEN }}
+          path: csesweb
+          branch: sync-md-branch
+          title: "Sync Markdown files from cses_solutions"
+          body: "This PR syncs markdown files from cses_solutions into the docs/ folder (adds, updates, deletes)."
