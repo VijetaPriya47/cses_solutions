@@ -63,6 +63,6 @@ jobs:
         with:
           token: ${{ secrets.REPO_B_TOKEN }}
           path: csesweb
-          branch: sync-md-branch
+          branch: main
           title: "Sync Markdown files from cses_solutions"
           body: "This PR syncs markdown files from cses_solutions into the docs/ folder (adds, updates, deletes)."
