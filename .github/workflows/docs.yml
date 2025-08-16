@@ -22,7 +22,7 @@ jobs:
       - name: Clone csesweb
         run: |
           git clone https://github.com/VijetaPriya47/csesweb.git
-          cd RepoB
+          cd csesweb
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
