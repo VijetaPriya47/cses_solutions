@@ -13,47 +13,34 @@ jobs:
       - name: Checkout cses_solutions
         uses: actions/checkout@v4
 
-      
-      # 🔹 Only run this on push events (changed files only)
-      - name: Get changed and deleted .md files
-        id: changed-files
-        uses: tj-actions/changed-files@v45
-        with:
-          files: |
-            **.md
-
       - name: Clone csesweb
         run: |
           git clone https://github.com/VijetaPriya47/csesweb.git RepoB
           cd RepoB
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-      
-      # # 🔹 Only run this on push events (changed files only)
-      # - name: Get changed and deleted .md files
-      #   if: github.event_name == 'push'
-      #   id: changed-files
-      #   uses: tj-actions/changed-files@v45
-      #   with:
-      #     files: |
-      #       **.md
-      
-      # 🔹 Sync only changed files if push
-      - name: Sync changed Markdown files into docs/
-        if: steps.changed-files.outputs.any_changed == 'true'
+            
+      # 🔹 Only run this on push events (changed files only)
+      - name: Get changed and deleted .md files
+        uses: tj-actions/changed-files@v45
+        if: github.event_name == 'push'
+        id: changed
+        with:
+          files: "**.md"
+            
+     # 🔹 Sync changes (add/update + delete)
+      - name: Sync Markdown files
+        if: github.event_name == 'push'
         run: |
-          for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
+          # Add/Update
+          for file in ${{ steps.changed.outputs.all_changed_files }}; do
             if [ -f "$file" ]; then
               mkdir -p RepoB/docs/$(dirname "$file")
               cp "$file" RepoB/docs/"$file"
             fi
           done
-          
-      # 🔹 Remove deleted files if push
-      - name: Remove deleted Markdown files from docs/
-        if: steps.changed-files.outputs.deleted_files != ''
-        run: |
-          for file in ${{ steps.changed-files.outputs.deleted_files }}; do
+          # Delete
+          for file in ${{ steps.changed.outputs.deleted_files }}; do
             rm -f RepoB/docs/"$file"
           done
 
@@ -62,15 +49,12 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         run: |
           mkdir -p RepoB/docs
-          find . -name "*.md" -exec bash -c '
-            for f; do
-              mkdir -p RepoB/docs/$(dirname "$f")
-              cp "$f" RepoB/docs/"$f"
-            done
-          ' bash {} +
+          find . -name "*.md" -print0 | while IFS= read -r -d '' f; do
+            mkdir -p RepoB/docs/$(dirname "$f")
+            cp "$f" RepoB/docs/"$f"
+          done
 
       - name: Commit and Push Changes to RepoB
-        if: steps.changed-files.outputs.any_changed == 'true' || steps.changed-files.outputs.deleted_files != ''
         run: |
           cd RepoB
           git checkout -b sync-md-branch || git checkout sync-md-branch
@@ -83,11 +67,16 @@ jobs:
           fi
 
       - name: Create Pull Request in Repo B
-        if: steps.changed-files.outputs.any_changed == 'true' || steps.changed-files.outputs.deleted_files != ''
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.REPO_B_TOKEN }}
-          path: csesweb
-          branch: main
-          title: "Sync Markdown files from cses_solutions"
-          body: "This PR syncs markdown files from cses_solutions into the docs/ folder (adds, updates, deletes)."
+          path: RepoB
+          branch: sync-md-branch
+          base: main   # adjust if Repo B’s default branch is not "main"
+          title: "📖 Sync Markdown files from Repo A"
+          body: |
+            This PR syncs Markdown files from Repo A into the `docs/` folder.
+            - Triggered by **${{ github.event_name }}**
+            - Changes detected in Repo A’s Markdown files
+          commit-message: "docs(sync): update markdown files from Repo A"
+          labels: documentation, automated-sync
