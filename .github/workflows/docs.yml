@@ -22,7 +22,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      # Prepare branch FIRST (Pattern A)
+      # Prepare branch FIRST
       - name: Prepare sync-md-branch in RepoB
         run: |
           set -e
