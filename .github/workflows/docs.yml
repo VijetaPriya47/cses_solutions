@@ -55,8 +55,8 @@ jobs:
         with:
           files: "**.md"
             
-     # 🔹 Sync changes (add/update + delete)
-      - name: Sync Markdown files
+      # 🔹 On push: sync only changed files (add/update + delete)
+      - name: Sync changed Markdown files
         if: github.event_name == 'push'
         run: |
           # Add/Update
@@ -71,11 +71,15 @@ jobs:
             rm -f RepoB/docs/"$file"
           done
 
-       # 🔹 On manual run: copy ALL .md files (bootstrap/full sync)
-      - name: Sync ALL Markdown files into docs/
+      # 🔹 On manual run: FULL MIRROR (delete docs/ and copy all)
+      - name: Mirror ALL Markdown files into docs/
         if: github.event_name == 'workflow_dispatch'
         run: |
+          # Remove old docs completely
+          rm -rf RepoB/docs
           mkdir -p RepoB/docs
+
+          # Copy all .md files preserving folder structure
           find . -name "*.md" -print0 | while IFS= read -r -d '' f; do
             mkdir -p RepoB/docs/$(dirname "$f")
             cp "$f" RepoB/docs/"$f"
@@ -89,7 +93,11 @@ jobs:
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "docs(sync): update markdown files from Repo A"
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              git commit -m "docs(sync): full mirror of markdown files from Repo A"
+            else
+              git commit -m "docs(sync): update markdown files from Repo A"
+            fi
             git push origin sync-md-branch
           fi
 
@@ -100,10 +108,12 @@ jobs:
           path: RepoB
           branch: sync-md-branch
           base: main   # adjust if Repo B’s default branch is not "main"
-          title: "📖 Sync Markdown files from Repo A"
+          title: |
+            📖 Sync Markdown files from Repo A
           body: |
             This PR syncs Markdown files from Repo A into the `docs/` folder.
+
             - Triggered by **${{ github.event_name }}**
-            - Changes detected in Repo A’s Markdown files
+            - Mode: ${{ github.event_name == 'workflow_dispatch' && 'Full Mirror' || 'Incremental Sync' }}
           commit-message: "docs(sync): update markdown files from Repo A"
           labels: documentation, automated-sync
