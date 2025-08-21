@@ -89,7 +89,7 @@ jobs:
         run: |
           cd RepoB
           git checkout sync-md-branch
-          git add docs/
+          git add -A docs/
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else
