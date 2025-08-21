@@ -12,6 +12,8 @@ jobs:
     steps:
       - name: Checkout cses_solutions
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # fetch full history, needed for branch ops
 
       - name: Clone csesweb
         run: |
@@ -53,6 +55,24 @@ jobs:
             mkdir -p RepoB/docs/$(dirname "$f")
             cp "$f" RepoB/docs/"$f"
           done
+          
+            
+      - name: Fetch remote branches
+        run: git fetch origin
+
+      - name: Ensure sync-md-branch exists
+        run: |
+          if git ls-remote --exit-code origin sync-md-branch; then
+            echo "✅ sync-md-branch exists on remote."
+          else
+            echo "⚠️ sync-md-branch does not exist. Creating it from main..."
+            git checkout main
+            git checkout -b sync-md-branch
+            git push origin sync-md-branch
+          fi
+
+      - name: Reset working base branch
+        run: git reset --hard origin/sync-md-branch
 
       - name: Commit and Push Changes to RepoB
         run: |
