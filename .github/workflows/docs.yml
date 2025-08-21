@@ -10,36 +10,32 @@ jobs:
   sync-md:
     runs-on: ubuntu-latest
     steps:
-      # 1) Source repo (Repo A)
       - name: Checkout cses_solutions
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # 2) Clone target repo (Repo B) with token
-      - name: Clone csesweb (Repo B)
+      - name: Clone csesweb
         run: |
           git clone "https://x-access-token:${{ secrets.REPO_B_TOKEN }}@github.com/VijetaPriya47/csesweb.git" RepoB
           cd RepoB
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      # 3) Prepare sync-md-branch in RepoB (create/checkout/reset FIRST)
+      # Prepare branch FIRST (Pattern A)
       - name: Prepare sync-md-branch in RepoB
         run: |
           set -e
           cd RepoB
           git fetch origin
           if git ls-remote --exit-code origin sync-md-branch >/dev/null 2>&1; then
-            echo "✅ sync-md-branch exists on remote."
             if git show-ref --verify --quiet refs/heads/sync-md-branch; then
               git checkout sync-md-branch
             else
               git checkout -b sync-md-branch origin/sync-md-branch
             fi
           else
-            echo "⚠️ sync-md-branch does not exist. Creating it from main..."
-            # Prefer remote main if it exists; fallback to local main
+            # Create from main if it exists remotely; otherwise local main
             if git ls-remote --exit-code origin refs/heads/main >/dev/null 2>&1; then
               git checkout -B sync-md-branch origin/main
             else
@@ -47,67 +43,46 @@ jobs:
             fi
             git push origin sync-md-branch
           fi
-          # Ensure clean state to avoid conflicts
+          # Ensure a clean working tree
           git reset --hard origin/sync-md-branch
-          # Optional: ensure working tree is clean of stray untracked content
           git clean -fdx
 
-      # 4) For push events, detect changed/deleted .md files in Repo A
+      # 🔹 Only run this on push events (changed files only)
       - name: Get changed and deleted .md files
+        uses: tj-actions/changed-files@v45
         if: github.event_name == 'push'
         id: changed
-        uses: tj-actions/changed-files@v45
         with:
           files: "**.md"
-
-      # 5) Copy only changed/removed files (push incremental)
-      - name: Sync Markdown files (push only)
+            
+     # 🔹 Sync changes (add/update + delete)
+      - name: Sync Markdown files
         if: github.event_name == 'push'
         run: |
-          set -e
-          # Add/Update changed files
-          while IFS= read -r file; do
-            [ -z "$file" ] && continue
+          # Add/Update
+          for file in ${{ steps.changed.outputs.all_changed_files }}; do
             if [ -f "$file" ]; then
-              mkdir -p "RepoB/docs/$(dirname "$file")"
-              rsync -a "$file" "RepoB/docs/$file"
+              mkdir -p RepoB/docs/$(dirname "$file")
+              cp "$file" RepoB/docs/"$file"
             fi
-          done << 'EOF'
-${{ steps.changed.outputs.all_changed_files }}
-EOF
+          done
+          # Delete
+          for file in ${{ steps.changed.outputs.deleted_files }}; do
+            rm -f RepoB/docs/"$file"
+          done
 
-          # Delete removed files
-          while IFS= read -r file; do
-            [ -z "$file" ] && continue
-            rm -f "RepoB/docs/$file" || true
-            dir="RepoB/docs/$(dirname "$file")"
-            # prune empty dirs upwards from the deleted file's directory
-            while [ "$dir" != "RepoB" ] && [ -d "$dir" ] && [ -z "$(ls -A "$dir" 2>/dev/null)" ]; do
-              rmdir "$dir" || true
-              dir="$(dirname "$dir")"
-            done
-          done << 'EOF'
-${{ steps.changed.outputs.deleted_files }}
-EOF
-
-      # 6) Copy ALL .md files (manual bootstrap)
-      - name: Sync ALL Markdown files (workflow_dispatch only)
+       # 🔹 On manual run: copy ALL .md files (bootstrap/full sync)
+      - name: Sync ALL Markdown files into docs/
         if: github.event_name == 'workflow_dispatch'
         run: |
-          set -e
           mkdir -p RepoB/docs
-          # Mirror only .md files and directories from Repo A into RepoB/docs
-          rsync -a \
-            --prune-empty-dirs \
-            --include="*/" \
-            --include="*.md" \
-            --exclude="*" \
-            ./ RepoB/docs/
+          find . -name "*.md" -print0 | while IFS= read -r -d '' f; do
+            mkdir -p RepoB/docs/$(dirname "$f")
+            cp "$f" RepoB/docs/"$f"
+          done
 
-      # 7) Commit and push changes from RepoB/sync-md-branch
       - name: Commit and Push Changes to RepoB
         run: |
-          set -e
           cd RepoB
           git checkout sync-md-branch
           git add docs/
@@ -118,17 +93,17 @@ EOF
             git push origin sync-md-branch
           fi
 
-      # 8) Create Pull Request in RepoB
       - name: Create Pull Request in Repo B
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.REPO_B_TOKEN }}
           path: RepoB
           branch: sync-md-branch
-          base: main   # change if RepoB default branch differs
+          base: main   # adjust if Repo B’s default branch is not "main"
           title: "📖 Sync Markdown files from Repo A"
           body: |
             This PR syncs Markdown files from Repo A into the `docs/` folder.
             - Triggered by **${{ github.event_name }}**
-            - Incremental on push, full on manual dispatch
+            - Changes detected in Repo A’s Markdown files
+          commit-message: "docs(sync): update markdown files from Repo A"
           labels: documentation, automated-sync
