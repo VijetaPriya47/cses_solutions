@@ -3,7 +3,7 @@ name: Sync Markdown to Repo B
 on:
   push:
     paths:
-      - "**.md"   # Trigger only when .md files change
+      - "**.md"
   workflow_dispatch:
 
 jobs:
@@ -28,14 +28,12 @@ jobs:
           cd RepoB
           git fetch origin
           if git ls-remote --exit-code origin sync-md-branch >/dev/null 2>&1; then
-            # branch already exists remotely
             if git show-ref --verify --quiet refs/heads/sync-md-branch; then
               git checkout sync-md-branch
             else
               git checkout -b sync-md-branch origin/sync-md-branch
             fi
           else
-            # no remote branch → create it
             if git ls-remote --exit-code origin refs/heads/main >/dev/null 2>&1; then
               git checkout -B sync-md-branch origin/main
             else
@@ -84,18 +82,28 @@ jobs:
             cp "$f" "$dest_dir/"
           done
 
+      # Compute human-readable sync mode for PR body
+      - name: Set sync mode
+        id: mode
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "mode=Full Mirror" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=Incremental Sync" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Create Pull Request in Repo B
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.REPO_B_TOKEN }}
           path: RepoB
           branch: sync-md-branch
-          base: main   # adjust if Repo B’s default branch is not "main"
+          base: main   # adjust if Repo B’s default branch differs
           title: |
             📖 Sync Markdown files from Repo A
           body: |
             This PR syncs Markdown files from Repo A into the `docs/` folder.
             - Triggered by **${{ github.event_name }}**
-            - Mode: ${{ github.event_name == 'workflow_dispatch' ? 'Full Mirror' : 'Incremental Sync' }}
+            - Mode: ${{ steps.mode.outputs.mode }}
           commit-message: "docs(sync): update markdown files from Repo A"
           labels: documentation, automated-sync
